@@ -151,3 +151,11 @@ def main_handler(event, context):
     
     print("--- Cloud Function Finished ---")
     return "OK" # Return a success message
+
+# Add this block to the very end of main.py
+
+if __name__ == "__main__":
+    # This block runs when the script is executed directly.
+    # We call the main_handler function, passing None for the unused
+    # event and context parameters.
+    main_handler(None, None)
