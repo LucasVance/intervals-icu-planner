@@ -1,0 +1,16 @@
+{
+  "training_goals": {
+    "target_ctl": 150.0,
+    "target_tsb": -25.0,
+    "alb_lower_bound": -10.0
+  },
+  "workout_settings": {
+    "power_target_pct": 0.6,
+    "ramp_duration_min": 3,
+    "ramp_start_pct": 0.4
+  },
+  "operational_settings": {
+    "live_mode": true,
+    "workout_name_prefix": "Auto-Plan:"
+  }
+}
