@@ -11,6 +11,7 @@
   },
   "operational_settings": {
     "live_mode": true,
-    "workout_name_prefix": "Auto-Plan:"
+    "workout_name_prefix": "Auto-Plan:",
+    "timezone": "America/Los_Angeles"
   }
 }
