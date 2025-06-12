@@ -27,12 +27,8 @@ class IntervalsAPI:
                 print("ERROR: API response received, but CTL/ATL data is missing.")
                 return None
             return {"ctl": data.get('ctl'), "atl": data.get('atl')}
-        except requests.exceptions.RequestException as e:
-            print(f"ERROR: Could not connect to Intervals.icu API: {e}")
-            return None
-        except json.JSONDecodeError:
-            print(f"ERROR: Could not decode JSON response from API.")
-            return None
+        except requests.exceptions.RequestException as e: print(f"ERROR: Could not connect to Intervals.icu API: {e}"); return None
+        except json.JSONDecodeError: print(f"ERROR: Could not decode JSON response from API."); return None
 
     def create_workout(self, workout_data: dict):
         url = f"{self.athlete_url}/events"
@@ -43,35 +39,31 @@ class IntervalsAPI:
             return response.json()
         except requests.exceptions.RequestException as e:
             print(f"ERROR: Failed to create workout: {e}")
-            if e.response is not None:
-                print(f"Server Response: {e.response.text}")
+            if e.response is not None: print(f"Server Response: {e.response.text}")
             return None
 
 def calculate_next_day_tss(current_ctl, current_atl, goals_config):
     """
     Calculates the target TSS for the next day using configurable time constants.
     """
-    # --- UPDATED: Use configurable time constants ---
-    c = goals_config.get('ctl_days', 42) # Default to 42 if not specified
-    a = goals_config.get('atl_days', 7)  # Default to 7 if not specified
+    c = goals_config.get('ctl_days', 42)
+    a = goals_config.get('atl_days', 7)
 
-    # Calculate generic constants from the time periods
     kc = (c - 1) / c
     ka = (a - 1) / a
     tsb_tss_multiplier = (1/c) - (1/a)
-    alb_tss_multiplier = a / (a - 1) if a > 1 else 100 # Avoid division by zero
 
-    # 1. Calculate TSS needed to aim for the target TSB using the generic formula
-    if abs(tsb_tss_multiplier) > 1e-9: # Avoid division by zero if c=a
+    if abs(tsb_tss_multiplier) > 1e-9:
         numerator = goals_config['target_tsb'] - (current_ctl * kc) + (current_atl * ka)
         tss_for_tsb_goal = numerator / tsb_tss_multiplier
     else:
-        tss_for_tsb_goal = current_atl # If c=a, aim for a neutral load
+        tss_for_tsb_goal = current_atl
 
-    # 2. Calculate the TSS cap based on the ALB lower bound using the generic formula
-    tss_cap_from_alb = current_atl - (goals_config['alb_lower_bound'] * alb_tss_multiplier)
+    # --- UPDATED: Simplified ALB Cap Calculation ---
+    # The cap is now based on the ATL at the start of the day (current_atl)
+    # TSS_n <= ATL_{n-1} - ALB_lower_bound
+    tss_cap_from_alb = current_atl - goals_config['alb_lower_bound']
 
-    # 3. The final TSS is the minimum of the two, ensuring it's not negative
     final_tss = min(tss_for_tsb_goal, tss_cap_from_alb)
     final_tss = max(0, final_tss)
     return final_tss
@@ -107,7 +99,7 @@ def build_z2_workout_for_tss(target_tss, workout_config, workout_date: date):
 
 def main_handler(event, context):
     """
-    This is the main entry point for the Google Cloud Function or GitHub Action.
+    This is the main entry point for the GitHub Action.
     """
     print("--- Daily Training Plan Script Initialized ---")
     
@@ -125,11 +117,8 @@ def main_handler(event, context):
         user_timezone_str = config['operational_settings']['timezone']
         user_timezone = ZoneInfo(user_timezone_str)
         today = datetime.now(user_timezone).date()
-    except KeyError:
-        print("ERROR: 'timezone' not found in config.json. Using UTC as default.")
-        today = date.today()
-    except ZoneInfoNotFoundError:
-        print(f"ERROR: Invalid timezone '{user_timezone_str}'. Using UTC as default.")
+    except (KeyError, ZoneInfoNotFoundError):
+        print(f"ERROR: Invalid or missing timezone in config.json. Using UTC as default.")
         today = date.today()
 
     try:
@@ -169,7 +158,7 @@ def main_handler(event, context):
     else:
         print("DRY RUN MODE IS ON. No workout was uploaded.")
     
-    print("--- Script Finished ---")
+    print("--- Cloud Function Finished ---")
     return "OK"
 
 if __name__ == "__main__":

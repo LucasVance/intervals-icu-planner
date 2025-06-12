@@ -4,14 +4,14 @@ This repository contains a Python script that automatically generates a daily tr
 
 The script runs automatically every day using GitHub Actions, creating a dynamic feedback loop: it reads your current fitness state, calculates the precise load needed for the next day, and populates your calendar so you always know what's next.
 
-## Core concepts
+## Core Concepts
 
 This planner is built on the well-established principles of training load management, with a key custom metric for controlling daily intensity.
 
--   **CTL (Chronic Training Load):** A proxy for your overall fitness, based on a long-term (42-day) weighted average of your training load.
--   **ATL (Acute Training Load):** A proxy for your fatigue, based on a short-term (7-day) weighted average.
+-   **CTL (Chronic Training Load):** A proxy for your overall fitness, based on a long-term weighted average of your training load. The number of days is configurable.
+-   **ATL (Acute Training Load):** A proxy for your fatigue, based on a short-term weighted average. The number of days is configurable.
 -   **TSB (Training Stress Balance):** Calculated as `CTL - ATL`, this represents your "form" or "freshness." A negative TSB is typical during a build phase. This script aims to hold your TSB at a specific target level.
--   **ALB (Acute Load Balance):** A metric defined as `ATL (from previous day) - Daily TSS`. This acts as a "guard rail" to prevent excessively large single-day jumps in training stress, ensuring a smooth and sustainable progression.
+-   **ALB (Acute Load Balance):** Defined as `ATL - Today's TSS`. This acts as a "guard rail" to prevent excessively large single-day jumps in training stress, ensuring a smooth and sustainable progression.
 
 ## Features
 
