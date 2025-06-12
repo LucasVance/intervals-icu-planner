@@ -1,8 +1,10 @@
 {
   "training_goals": {
+    "ctl_days": 40,
+    "atl_days": 4,
     "target_ctl": 150.0,
     "target_tsb": -25.0,
-    "alb_lower_bound": -20.0
+    "alb_lower_bound": -30.0
   },
   "workout_settings": {
     "power_target_pct": 0.6,
@@ -10,7 +12,7 @@
     "ramp_start_pct": 0.4
   },
   "operational_settings": {
-    "live_mode": false,
+    "live_mode": true,
     "workout_name_prefix": "Auto-Plan:",
     "timezone": "America/Los_Angeles"
   }

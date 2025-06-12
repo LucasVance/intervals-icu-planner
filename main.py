@@ -3,21 +3,19 @@
 import requests
 import json
 import os
-# --- FIX: Import modules needed for timezone awareness ---
 from datetime import date, timedelta, datetime, time
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-# ==============================================================================
-# --- API CLIENT, CALCULATION ENGINE, WORKOUT BUILDER (All Unchanged) ---
-# ==============================================================================
 class IntervalsAPI:
-    # ... (This class remains exactly the same as before)
+    """A client to interact with the Intervals.icu API."""
     BASE_URL = "https://intervals.icu"
+
     def __init__(self, athlete_id, api_key):
         if not athlete_id or not api_key:
             raise ValueError("API credentials (ATHLETE_ID, API_KEY) not found in environment variables.")
         self.auth = ("API_KEY", api_key)
         self.athlete_url = f"{self.BASE_URL}/api/v1/athlete/{athlete_id}"
+
     def get_current_state(self, for_date: date):
         date_str = for_date.isoformat()
         url = f"{self.athlete_url}/wellness/{date_str}"
@@ -29,8 +27,13 @@ class IntervalsAPI:
                 print("ERROR: API response received, but CTL/ATL data is missing.")
                 return None
             return {"ctl": data.get('ctl'), "atl": data.get('atl')}
-        except requests.exceptions.RequestException as e: print(f"ERROR: Could not connect to Intervals.icu API: {e}"); return None
-        except json.JSONDecodeError: print(f"ERROR: Could not decode JSON response from API."); return None
+        except requests.exceptions.RequestException as e:
+            print(f"ERROR: Could not connect to Intervals.icu API: {e}")
+            return None
+        except json.JSONDecodeError:
+            print(f"ERROR: Could not decode JSON response from API.")
+            return None
+
     def create_workout(self, workout_data: dict):
         url = f"{self.athlete_url}/events"
         try:
@@ -40,47 +43,73 @@ class IntervalsAPI:
             return response.json()
         except requests.exceptions.RequestException as e:
             print(f"ERROR: Failed to create workout: {e}")
-            if e.response is not None: print(f"Server Response: {e.response.text}")
+            if e.response is not None:
+                print(f"Server Response: {e.response.text}")
             return None
 
 def calculate_next_day_tss(current_ctl, current_atl, goals_config):
-    # ... (This function remains exactly the same as before)
-    tss_for_tsb_goal = (41 * current_ctl - 36 * current_atl - 42 * goals_config['target_tsb']) / 5
-    tss_cap_from_alb = current_atl - (goals_config['alb_lower_bound'] * (7/6))
+    """
+    Calculates the target TSS for the next day using configurable time constants.
+    """
+    # --- UPDATED: Use configurable time constants ---
+    c = goals_config.get('ctl_days', 42) # Default to 42 if not specified
+    a = goals_config.get('atl_days', 7)  # Default to 7 if not specified
+
+    # Calculate generic constants from the time periods
+    kc = (c - 1) / c
+    ka = (a - 1) / a
+    tsb_tss_multiplier = (1/c) - (1/a)
+    alb_tss_multiplier = a / (a - 1) if a > 1 else 100 # Avoid division by zero
+
+    # 1. Calculate TSS needed to aim for the target TSB using the generic formula
+    if abs(tsb_tss_multiplier) > 1e-9: # Avoid division by zero if c=a
+        numerator = goals_config['target_tsb'] - (current_ctl * kc) + (current_atl * ka)
+        tss_for_tsb_goal = numerator / tsb_tss_multiplier
+    else:
+        tss_for_tsb_goal = current_atl # If c=a, aim for a neutral load
+
+    # 2. Calculate the TSS cap based on the ALB lower bound using the generic formula
+    tss_cap_from_alb = current_atl - (goals_config['alb_lower_bound'] * alb_tss_multiplier)
+
+    # 3. The final TSS is the minimum of the two, ensuring it's not negative
     final_tss = min(tss_for_tsb_goal, tss_cap_from_alb)
     final_tss = max(0, final_tss)
     return final_tss
 
 def build_z2_workout_for_tss(target_tss, workout_config, workout_date: date):
-    # ... (This function remains exactly the same as before)
     workout_datetime = datetime.combine(workout_date, time(7, 0))
     name_prefix = workout_config.get("name_prefix", "Auto-Plan:")
     if target_tss <= 0:
         return {"category": "WORKOUT", "type": "Rest", "name": f"{name_prefix} Rest Day", "start_date_local": workout_datetime.isoformat(), "description": "Rest Day"}
+    
     ramp_duration_min = workout_config['ramp_duration_min']
     ramp_start_pct = workout_config['ramp_start_pct']
     main_set_pct = workout_config['power_target_pct']
+    
     ramp_if_squared = ((ramp_start_pct**2) + (main_set_pct**2)) / 2.0
     ramp_duration_hr = ramp_duration_min / 60.0
     ramp_tss = ramp_if_squared * ramp_duration_hr * 100
+    
     tss_for_main_set = target_tss - ramp_tss
+    
     main_set_duration_min = 0
     if tss_for_main_set > 0 and main_set_pct > 0:
         main_set_if_squared = main_set_pct**2
         main_set_duration_hr = tss_for_main_set / (main_set_if_squared * 100)
         main_set_duration_min = round(main_set_duration_hr * 60)
+        
     ramp_string = f"- {ramp_duration_min}m ramp {ramp_start_pct:.0%}-{main_set_pct:.0%} FTP"
     main_set_string = f"- {main_set_duration_min}m {main_set_pct:.0%} FTP"
     workout_description = f"{ramp_string}\n{main_set_string}" if main_set_duration_min > 0 else ramp_string
+    
     workout_object = {"category": "WORKOUT", "type": "Ride", "name": f"{name_prefix} {round(target_tss)} TSS", "start_date_local": workout_datetime.isoformat(), "description": workout_description, "load": round(target_tss)}
     return workout_object
 
-# ==============================================================================
-# --- MAIN HANDLER (Updated to be Timezone-Aware) ---
-# ==============================================================================
 def main_handler(event, context):
-    """This is the main entry point for the Google Cloud Function."""
-    print("--- Cloud Function Initialized ---")
+    """
+    This is the main entry point for the Google Cloud Function or GitHub Action.
+    """
+    print("--- Daily Training Plan Script Initialized ---")
     
     try:
         with open("config.json") as f:
@@ -92,18 +121,16 @@ def main_handler(event, context):
         print("ERROR: Could not parse config.json.")
         return
 
-    # --- FIX: Determine the current date using the user's timezone ---
     try:
         user_timezone_str = config['operational_settings']['timezone']
         user_timezone = ZoneInfo(user_timezone_str)
-        # Get the current time in the specified timezone and then extract the date
         today = datetime.now(user_timezone).date()
     except KeyError:
-        print("ERROR: 'timezone' not found in config.json operational_settings.")
-        return
+        print("ERROR: 'timezone' not found in config.json. Using UTC as default.")
+        today = date.today()
     except ZoneInfoNotFoundError:
-        print(f"ERROR: Invalid timezone '{user_timezone_str}' in config.json.")
-        return
+        print(f"ERROR: Invalid timezone '{user_timezone_str}'. Using UTC as default.")
+        today = date.today()
 
     try:
         api_key = os.environ['API_KEY']
@@ -142,11 +169,8 @@ def main_handler(event, context):
     else:
         print("DRY RUN MODE IS ON. No workout was uploaded.")
     
-    print("--- Cloud Function Finished ---")
+    print("--- Script Finished ---")
     return "OK"
 
 if __name__ == "__main__":
-    # This allows local testing, but requires you to set environment variables locally
-    # export ATHLETE_ID="iXXXXXX"
-    # export API_KEY="YOUR_API_KEY_HERE"
     main_handler(None, None)
