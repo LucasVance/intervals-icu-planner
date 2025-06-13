@@ -44,36 +44,41 @@ class IntervalsAPI:
 
 def calculate_next_day_tss(current_ctl, current_atl, goals_config):
     """
-    Calculates the target TSS for the next day using configurable time constants.
+    Calculates the target TSS and returns a dictionary with calculation details.
+    This version uses the older, hardcoded 42/7 constants based on the provided file.
     """
-    c = goals_config.get('ctl_days', 42)
-    a = goals_config.get('atl_days', 7)
+    # Using hardcoded 42/7 constants from the uploaded main.py
+    # To make this configurable, we would read ctl_days and atl_days from config
+    tss_for_tsb_goal = (41 * current_ctl - 36 * current_atl - 42 * goals_config['target_tsb']) / 5
+    tss_cap_from_alb = current_atl - (goals_config['alb_lower_bound'] * (7/6))
 
-    kc = (c - 1) / c
-    ka = (a - 1) / a
-    tsb_tss_multiplier = (1/c) - (1/a)
+    reason = "TSB Driven"
+    final_tss = tss_for_tsb_goal
 
-    if abs(tsb_tss_multiplier) > 1e-9:
-        numerator = goals_config['target_tsb'] - (current_ctl * kc) + (current_atl * ka)
-        tss_for_tsb_goal = numerator / tsb_tss_multiplier
-    else:
-        tss_for_tsb_goal = current_atl
+    if final_tss > tss_cap_from_alb:
+        final_tss = tss_cap_from_alb
+        reason = "Capped by ALB Limit"
 
-    # --- UPDATED: Simplified ALB Cap Calculation ---
-    # The cap is now based on the ATL at the start of the day (current_atl)
-    # TSS_n <= ATL_{n-1} - ALB_lower_bound
-    tss_cap_from_alb = current_atl - goals_config['alb_lower_bound']
-
-    final_tss = min(tss_for_tsb_goal, tss_cap_from_alb)
     final_tss = max(0, final_tss)
-    return final_tss
 
-def build_z2_workout_for_tss(target_tss, workout_config, workout_date: date):
+    return {
+        "final_tss": final_tss,
+        "tss_for_tsb_goal": tss_for_tsb_goal,
+        "tss_cap_from_alb": tss_cap_from_alb,
+        "reason": reason
+    }
+
+def build_z2_workout_for_tss(tss_details, current_ctl, current_atl, goals_config, workout_config, workout_date: date):
+    """Builds a workout object, including a rationale in the description."""
+    
+    target_tss = tss_details['final_tss']
     workout_datetime = datetime.combine(workout_date, time(7, 0))
     name_prefix = workout_config.get("name_prefix", "Auto-Plan:")
+
     if target_tss <= 0:
         return {"category": "WORKOUT", "type": "Rest", "name": f"{name_prefix} Rest Day", "start_date_local": workout_datetime.isoformat(), "description": "Rest Day"}
-    
+
+    # Build the workout steps (ramp + main set)
     ramp_duration_min = workout_config['ramp_duration_min']
     ramp_start_pct = workout_config['ramp_start_pct']
     main_set_pct = workout_config['power_target_pct']
@@ -92,9 +97,51 @@ def build_z2_workout_for_tss(target_tss, workout_config, workout_date: date):
         
     ramp_string = f"- {ramp_duration_min}m ramp {ramp_start_pct:.0%}-{main_set_pct:.0%} FTP"
     main_set_string = f"- {main_set_duration_min}m {main_set_pct:.0%} FTP"
-    workout_description = f"{ramp_string}\n{main_set_string}" if main_set_duration_min > 0 else ramp_string
+    workout_steps = f"{ramp_string}\n{main_set_string}" if main_set_duration_min > 0 else ramp_string
     
-    workout_object = {"category": "WORKOUT", "type": "Ride", "name": f"{name_prefix} {round(target_tss)} TSS", "start_date_local": workout_datetime.isoformat(), "description": workout_description, "load": round(target_tss)}
+    # --- NEW: Build the rationale string using the requested HTML format ---
+    rationale_string = f"""
+<h3>Auto-Plan Rationale</h3>
+<table>
+    <style>
+        td:first-child {{
+            padding-right: 5px; text-align: right;
+        }}
+    </style>
+    <tr>
+        <td>TSB Limit: </td>
+        <td>{goals_config['target_tsb']:.1f}</td>
+    </tr>
+    <tr>
+        <td>ALB Limit: </td>
+        <td>{goals_config['alb_lower_bound']:.1f}</td>
+    </tr>
+    <tr>
+        <td>CTL: </td>
+        <td>{current_ctl:.1f}</td>
+    </tr>
+    <tr>
+        <td>ATL: </td>
+        <td>{current_atl:.1f}</td>
+    </tr>
+    <tr>
+        <td>TSS limit from TSB: </td>
+        <td>{tss_details['tss_for_tsb_goal']:.1f}</td>
+    </tr>
+    <tr>
+        <td>TSS limit from ALB: </td>
+        <td>{tss_details['tss_cap_from_alb']:.1f}</td>
+    </tr>
+    <tr>
+        <td>Final TSS target: </td>
+        <td>{tss_details['final_tss']:.1f} ({tss_details['reason']})</td>
+    </tr>
+</table>"""
+
+    # Combine workout steps and rationale for the final description
+    final_description = f"{workout_steps}\n{rationale_string}"
+
+    workout_object = {"category": "WORKOUT", "type": "Ride", "name": f"{name_prefix} {round(target_tss)} TSS", "start_date_local": workout_datetime.isoformat(), "description": final_description, "load": round(target_tss)}
     return workout_object
 
 def main_handler(event, context):
@@ -140,13 +187,30 @@ def main_handler(event, context):
     current_atl = state['atl']
     print(f"Current State -> CTL: {current_ctl:.2f}, ATL: {current_atl:.2f}")
 
-    target_tss_tomorrow = calculate_next_day_tss(current_ctl, current_atl, config['training_goals'])
-    print(f"Calculation -> Target TSS for tomorrow: {target_tss_tomorrow:.2f}")
+    # Get the dictionary of calculation results
+    tss_details_tomorrow = calculate_next_day_tss(current_ctl, current_atl, config['training_goals'])
+    print(f"Calculation -> Target TSS for tomorrow: {tss_details_tomorrow['final_tss']:.2f} ({tss_details_tomorrow['reason']})")
     
     tomorrow = today + timedelta(days=1)
-    workout_to_upload = build_z2_workout_for_tss(target_tss_tomorrow, config['workout_settings'], workout_date=tomorrow)
+    # Pass all necessary details to the workout builder
+    workout_to_upload = build_z2_workout_for_tss(
+        tss_details_tomorrow, 
+        current_ctl, 
+        current_atl, 
+        config['training_goals'], 
+        config['workout_settings'], 
+        workout_date=tomorrow
+    )
     print("Workout Builder -> Generated workout object:")
-    print(json.dumps(workout_to_upload, indent=2))
+    # Use an extra check to avoid printing a potentially large object if something goes wrong
+    if workout_to_upload and isinstance(workout_to_upload, dict):
+        # Temporarily remove description for cleaner console logging
+        desc = workout_to_upload.pop('description', '')
+        print(json.dumps(workout_to_upload, indent=2))
+        workout_to_upload['description'] = desc # Add it back
+    else:
+        print(workout_to_upload)
+
 
     print("-" * 20)
     if config['operational_settings'].get('live_mode', False):
