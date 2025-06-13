@@ -4,7 +4,7 @@ This repository contains a Python script that automatically generates a daily tr
 
 The script runs automatically every day using GitHub Actions, creating a dynamic feedback loop: it reads your current fitness state, calculates the precise load needed for the next day, and populates your calendar so you always know what's next.
 
-## Core Concepts
+## Core concepts
 
 This planner is built on the well-established principles of training load management, with a key custom metric for controlling daily intensity.
 
@@ -61,7 +61,7 @@ This file holds all the non-sensitive parameters for your training plan. Edit th
 
 ### 2. GitHub Actions Secrets
 
-To allow the script to securely access your Intervals.icu account, you must add your Athlete ID and API Key as "Repository secrets". They can be found at the bottom of the [intervals.icu settings](https://intervals.icu/settings) page
+To allow the script to securely access your Intervals.icu account, you must add your Athlete ID and API Key as "Repository secrets". They can be found at the bottom of the [intervals.icu settings](https://intervals.icu/settings) page.
 
 1.  In your GitHub repository, go to **Settings** > **Secrets and variables** > **Actions**.
 2.  Click the **"New repository secret"** button.
