@@ -3,19 +3,23 @@
 import requests
 import json
 import os
-from datetime import date, timedelta, datetime, time
+from datetime import date, timedelta, datetime, time, timezone
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
+# --- ADDED: Version constant for the script ---
+SCRIPT_VERSION = "1.2.0"
+
+# ==============================================================================
+# --- API CLIENT, CALCULATION ENGINE, WORKOUT BUILDER (All Unchanged) ---
+# ==============================================================================
 class IntervalsAPI:
     """A client to interact with the Intervals.icu API."""
     BASE_URL = "https://intervals.icu"
-
     def __init__(self, athlete_id, api_key):
         if not athlete_id or not api_key:
             raise ValueError("API credentials (ATHLETE_ID, API_KEY) not found in environment variables.")
         self.auth = ("API_KEY", api_key)
         self.athlete_url = f"{self.BASE_URL}/api/v1/athlete/{athlete_id}"
-
     def get_current_state(self, for_date: date):
         date_str = for_date.isoformat()
         url = f"{self.athlete_url}/wellness/{date_str}"
@@ -29,7 +33,6 @@ class IntervalsAPI:
             return {"ctl": data.get('ctl'), "atl": data.get('atl')}
         except requests.exceptions.RequestException as e: print(f"ERROR: Could not connect to Intervals.icu API: {e}"); return None
         except json.JSONDecodeError: print(f"ERROR: Could not decode JSON response from API."); return None
-
     def create_workout(self, workout_data: dict):
         url = f"{self.athlete_url}/events"
         try:
@@ -43,24 +46,16 @@ class IntervalsAPI:
             return None
 
 def calculate_next_day_tss(current_ctl, current_atl, goals_config):
-    """
-    Calculates the target TSS and returns a dictionary with calculation details.
-    This version uses the older, hardcoded 42/7 constants based on the provided file.
-    """
-    # Using hardcoded 42/7 constants from the uploaded main.py
+    # This uses the older, hardcoded 42/7 constants from the uploaded main.py
     # To make this configurable, we would read ctl_days and atl_days from config
     tss_for_tsb_goal = (41 * current_ctl - 36 * current_atl - 42 * goals_config['target_tsb']) / 5
     tss_cap_from_alb = current_atl - (goals_config['alb_lower_bound'] * (7/6))
-
     reason = "TSB Driven"
     final_tss = tss_for_tsb_goal
-
     if final_tss > tss_cap_from_alb:
         final_tss = tss_cap_from_alb
         reason = "Capped by ALB Limit"
-
     final_tss = max(0, final_tss)
-
     return {
         "final_tss": final_tss,
         "tss_for_tsb_goal": tss_for_tsb_goal,
@@ -69,37 +64,26 @@ def calculate_next_day_tss(current_ctl, current_atl, goals_config):
     }
 
 def build_z2_workout_for_tss(tss_details, current_ctl, current_atl, goals_config, workout_config, workout_date: date):
-    """Builds a workout object, including a rationale in the description."""
-    
     target_tss = tss_details['final_tss']
     workout_datetime = datetime.combine(workout_date, time(7, 0))
     name_prefix = workout_config.get("name_prefix", "Auto-Plan:")
-
     if target_tss <= 0:
         return {"category": "WORKOUT", "type": "Rest", "name": f"{name_prefix} Rest Day", "start_date_local": workout_datetime.isoformat(), "description": "Rest Day"}
-
-    # Build the workout steps (ramp + main set)
     ramp_duration_min = workout_config['ramp_duration_min']
     ramp_start_pct = workout_config['ramp_start_pct']
     main_set_pct = workout_config['power_target_pct']
-    
     ramp_if_squared = ((ramp_start_pct**2) + (main_set_pct**2)) / 2.0
     ramp_duration_hr = ramp_duration_min / 60.0
     ramp_tss = ramp_if_squared * ramp_duration_hr * 100
-    
     tss_for_main_set = target_tss - ramp_tss
-    
     main_set_duration_min = 0
     if tss_for_main_set > 0 and main_set_pct > 0:
         main_set_if_squared = main_set_pct**2
         main_set_duration_hr = tss_for_main_set / (main_set_if_squared * 100)
         main_set_duration_min = round(main_set_duration_hr * 60)
-        
     ramp_string = f"- {ramp_duration_min}m ramp {ramp_start_pct:.0%}-{main_set_pct:.0%} FTP"
     main_set_string = f"- {main_set_duration_min}m {main_set_pct:.0%} FTP"
     workout_steps = f"{ramp_string}\n{main_set_string}" if main_set_duration_min > 0 else ramp_string
-    
-    # --- NEW: Build the rationale string using the requested HTML format ---
     rationale_string = f"""
 <h3>Auto-Plan Rationale</h3>
 <table>
@@ -137,18 +121,20 @@ def build_z2_workout_for_tss(tss_details, current_ctl, current_atl, goals_config
         <td>{tss_details['final_tss']:.1f} ({tss_details['reason']})</td>
     </tr>
 </table>"""
-
-    # Combine workout steps and rationale for the final description
     final_description = f"{workout_steps}\n{rationale_string}"
-
     workout_object = {"category": "WORKOUT", "type": "Ride", "name": f"{name_prefix} {round(target_tss)} TSS", "start_date_local": workout_datetime.isoformat(), "description": final_description, "load": round(target_tss)}
     return workout_object
 
+# ==============================================================================
+# --- MAIN HANDLER (Updated with more logging) ---
+# ==============================================================================
 def main_handler(event, context):
-    """
-    This is the main entry point for the GitHub Action.
-    """
-    print("--- Daily Training Plan Script Initialized ---")
+    """This is the main entry point for the GitHub Action."""
+    
+    # --- ADDED: More detailed initial logging ---
+    run_timestamp_utc = datetime.now(timezone.utc)
+    print(f"--- Daily Training Plan Script v{SCRIPT_VERSION} Initialized ---")
+    print(f"Run Timestamp (UTC): {run_timestamp_utc.isoformat()}")
     
     try:
         with open("config.json") as f:
@@ -168,6 +154,13 @@ def main_handler(event, context):
         print(f"ERROR: Invalid or missing timezone in config.json. Using UTC as default.")
         today = date.today()
 
+    # --- ADDED: Log the configuration being used for the run ---
+    print("\n--- Using configuration ---")
+    print(f"Timezone: {user_timezone_str}")
+    print("Training Goals:", json.dumps(config.get('training_goals'), indent=2))
+    print("Workout Settings:", json.dumps(config.get('workout_settings'), indent=2))
+    print("---------------------------\n")
+
     try:
         api_key = os.environ['API_KEY']
         athlete_id = os.environ['ATHLETE_ID']
@@ -177,7 +170,7 @@ def main_handler(event, context):
 
     api = IntervalsAPI(athlete_id, api_key)
 
-    print(f"Fetching current state for user's local date: {today.isoformat()} ({user_timezone_str})")
+    print(f"Fetching current state for user's local date: {today.isoformat()}")
     state = api.get_current_state(for_date=today)
     if not state:
         print("Halting script due to API error.")
@@ -187,12 +180,10 @@ def main_handler(event, context):
     current_atl = state['atl']
     print(f"Current State -> CTL: {current_ctl:.2f}, ATL: {current_atl:.2f}")
 
-    # Get the dictionary of calculation results
     tss_details_tomorrow = calculate_next_day_tss(current_ctl, current_atl, config['training_goals'])
     print(f"Calculation -> Target TSS for tomorrow: {tss_details_tomorrow['final_tss']:.2f} ({tss_details_tomorrow['reason']})")
     
     tomorrow = today + timedelta(days=1)
-    # Pass all necessary details to the workout builder
     workout_to_upload = build_z2_workout_for_tss(
         tss_details_tomorrow, 
         current_ctl, 
@@ -202,15 +193,12 @@ def main_handler(event, context):
         workout_date=tomorrow
     )
     print("Workout Builder -> Generated workout object:")
-    # Use an extra check to avoid printing a potentially large object if something goes wrong
     if workout_to_upload and isinstance(workout_to_upload, dict):
-        # Temporarily remove description for cleaner console logging
         desc = workout_to_upload.pop('description', '')
         print(json.dumps(workout_to_upload, indent=2))
-        workout_to_upload['description'] = desc # Add it back
+        workout_to_upload['description'] = desc
     else:
         print(workout_to_upload)
-
 
     print("-" * 20)
     if config['operational_settings'].get('live_mode', False):
@@ -222,7 +210,7 @@ def main_handler(event, context):
     else:
         print("DRY RUN MODE IS ON. No workout was uploaded.")
     
-    print("--- Cloud Function Finished ---")
+    print("--- Script Finished ---")
     return "OK"
 
 if __name__ == "__main__":
