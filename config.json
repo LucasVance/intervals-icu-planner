@@ -4,11 +4,11 @@
     "atl_days": 4,
     "target_ctl": 150.0,
     "target_tsb": -25.0,
-    "alb_lower_bound": -30.0
+    "alb_lower_bound": -20.0
   },
   "workout_settings": {
-    "power_target_pct": 0.6,
-    "ramp_duration_min": 3,
+    "power_target_pct": 0.65,
+    "ramp_duration_min": 1,
     "ramp_start_pct": 0.4
   },
   "operational_settings": {
