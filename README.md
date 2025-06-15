@@ -54,7 +54,7 @@ This file holds all the non-sensitive parameters for your training plan. Edit th
 
 -   `target_ctl`: Your ultimate long-term fitness goal.
 -   `target_tsb`: The daily TSB you want to hold during your training block.
--   `alb_lower_bound`: The "floor" for daily training aggressiveness. A value of `-40` means your daily TSS is allowed to be ~47 points higher than your ATL from the previous day. A less negative number (e.g., -20) will force a more gradual progression. In my experience, -10 is a good starting point.
+-   `alb_lower_bound`: The "floor" for daily training aggressiveness. A value of `-40` means your daily TSS is allowed to be 40 points higher than your ATL. A less negative number (e.g., -10) will force a more gradual progression.
 -   `power_target_pct`: The intensity of the main workout set (e.g., 0.65 = 65% FTP).
 -   `ramp_duration_min` / `ramp_start_pct`: Parameters for the workout's warm-up ramp.
 -   `live_mode`: Should be `true` for the GitHub Action to run for real.
