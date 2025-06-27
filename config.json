@@ -3,17 +3,17 @@
     "ctl_days": 40,
     "atl_days": 4,
     "target_ctl": 150.0,
-    "target_tsb": -25.0,
-    "alb_lower_bound": -30.0
+    "target_tsb": -40.0,
+    "alb_lower_bound": -40.0
   },
   "workout_templates": {
     "endurance": {
       "name": "Endurance",
-      "description": "- 1m ramp 40%-65% FTP\n- {{ DURATION }} 65% FTP"
+      "description": "- 1m ramp 40%-60% FTP\n- {{ DURATION }} 60% FTP"
     },
     "morning": {
-      "name": "Morning endurance",
-      "description": "- 1m ramp 40%-65% FTP\n- 59m 65% FTP"
+      "name": "Morning",
+      "description": "- 1m ramp 40%-60% FTP\n- 59m 60% FTP"
     }
   },
   "weekly_schedule": {
