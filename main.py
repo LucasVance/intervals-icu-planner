@@ -3,14 +3,12 @@
 import requests
 import json
 import os
-from datetime import date, timedelta, datetime, time, timezone
+import re
+from datetime import date, timedelta, datetime, time
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-# --- ADDED: Version constant for the script ---
-SCRIPT_VERSION = "1.2.0"
-
 # ==============================================================================
-# --- API CLIENT, CALCULATION ENGINE, WORKOUT BUILDER (All Unchanged) ---
+# --- API CLIENT (Unchanged) ---
 # ==============================================================================
 class IntervalsAPI:
     """A client to interact with the Intervals.icu API."""
@@ -27,9 +25,7 @@ class IntervalsAPI:
             response = requests.get(url, auth=self.auth, timeout=10)
             response.raise_for_status()
             data = response.json()
-            if data.get('ctl') is None or data.get('atl') is None:
-                print("ERROR: API response received, but CTL/ATL data is missing.")
-                return None
+            if data.get('ctl') is None or data.get('atl') is None: return None
             return {"ctl": data.get('ctl'), "atl": data.get('atl')}
         except requests.exceptions.RequestException as e: print(f"ERROR: Could not connect to Intervals.icu API: {e}"); return None
         except json.JSONDecodeError: print(f"ERROR: Could not decode JSON response from API."); return None
@@ -45,17 +41,33 @@ class IntervalsAPI:
             if e.response is not None: print(f"Server Response: {e.response.text}")
             return None
 
+# ==============================================================================
+# --- CALCULATION ENGINE (Updated to return rationale details) ---
+# ==============================================================================
 def calculate_next_day_tss(current_ctl, current_atl, goals_config):
-    # This uses the older, hardcoded 42/7 constants from the uploaded main.py
-    # To make this configurable, we would read ctl_days and atl_days from config
-    tss_for_tsb_goal = (41 * current_ctl - 36 * current_atl - 42 * goals_config['target_tsb']) / 5
-    tss_cap_from_alb = current_atl - (goals_config['alb_lower_bound'] * (7/6))
+    """Calculates the target TSS and returns a dictionary with calculation details."""
+    c = goals_config.get('ctl_days', 42)
+    a = goals_config.get('atl_days', 7)
+    kc = (c - 1) / c
+    ka = (a - 1) / a
+    tsb_tss_multiplier = (1/c) - (1/a)
+    
+    if abs(tsb_tss_multiplier) > 1e-9:
+        numerator = goals_config['target_tsb'] - (current_ctl * kc) + (current_atl * ka)
+        tss_for_tsb_goal = numerator / tsb_tss_multiplier
+    else:
+        tss_for_tsb_goal = current_atl
+        
+    tss_cap_from_alb = current_atl - goals_config['alb_lower_bound']
+
     reason = "TSB Driven"
     final_tss = tss_for_tsb_goal
     if final_tss > tss_cap_from_alb:
         final_tss = tss_cap_from_alb
         reason = "Capped by ALB Limit"
+        
     final_tss = max(0, final_tss)
+    
     return {
         "final_tss": final_tss,
         "tss_for_tsb_goal": tss_for_tsb_goal,
@@ -63,27 +75,75 @@ def calculate_next_day_tss(current_ctl, current_atl, goals_config):
         "reason": reason
     }
 
-def build_z2_workout_for_tss(tss_details, current_ctl, current_atl, goals_config, workout_config, workout_date: date):
-    target_tss = tss_details['final_tss']
+# ==============================================================================
+# --- WORKOUT BUILDER (Updated with HTML Rationale) ---
+# ==============================================================================
+def _calculate_tss_for_step(step_string):
+    """Calculates the TSS for a single line from a workout description."""
+    try:
+        duration_match = re.search(r'(\d+)\s*m', step_string)
+        if not duration_match: return 0.0
+        duration_min = int(duration_match.group(1))
+        duration_hr = duration_min / 60.0
+        intensity_parts = [int(p) for p in re.findall(r'(\d+)%', step_string)]
+        if not intensity_parts: return 0.0
+        start_pct = intensity_parts[0] / 100.0
+        end_pct = intensity_parts[1] / 100.0 if len(intensity_parts) > 1 else start_pct
+        if 'ramp' in step_string.lower():
+            if_squared = ((start_pct**2) + (end_pct**2)) / 2.0
+        else:
+            if_squared = start_pct**2
+        return if_squared * duration_hr * 100
+    except (ValueError, IndexError):
+        return 0.0
+
+def build_workout_from_template(target_tss, template, workout_date, tss_details, goals_config, current_ctl, current_atl, part_num=None, total_parts=None):
+    """Builds a workout object, including a detailed HTML rationale."""
+    
     workout_datetime = datetime.combine(workout_date, time(7, 0))
-    name_prefix = workout_config.get("name_prefix", "Auto-Plan:")
-    if target_tss <= 0:
-        return {"category": "WORKOUT", "type": "Rest", "name": f"{name_prefix} Rest Day", "start_date_local": workout_datetime.isoformat(), "description": "Rest Day"}
-    ramp_duration_min = workout_config['ramp_duration_min']
-    ramp_start_pct = workout_config['ramp_start_pct']
-    main_set_pct = workout_config['power_target_pct']
-    ramp_if_squared = ((ramp_start_pct**2) + (main_set_pct**2)) / 2.0
-    ramp_duration_hr = ramp_duration_min / 60.0
-    ramp_tss = ramp_if_squared * ramp_duration_hr * 100
-    tss_for_main_set = target_tss - ramp_tss
-    main_set_duration_min = 0
-    if tss_for_main_set > 0 and main_set_pct > 0:
-        main_set_if_squared = main_set_pct**2
-        main_set_duration_hr = tss_for_main_set / (main_set_if_squared * 100)
-        main_set_duration_min = round(main_set_duration_hr * 60)
-    ramp_string = f"- {ramp_duration_min}m ramp {ramp_start_pct:.0%}-{main_set_pct:.0%} FTP"
-    main_set_string = f"- {main_set_duration_min}m {main_set_pct:.0%} FTP"
-    workout_steps = f"{ramp_string}\n{main_set_string}" if main_set_duration_min > 0 else ramp_string
+    if part_num and part_num > 1:
+        workout_datetime += timedelta(hours=10)
+
+    # --- FIX: Correctly use the prefix from the configuration ---
+    name_prefix = config['operational_settings'].get("workout_name_prefix", "Auto-Plan:")
+    workout_name = f"{name_prefix}{template['name']}"
+    if total_parts and total_parts > 1:
+        workout_name += f" ({part_num}/{total_parts})"
+
+    # --- Workout Step Generation ---
+    fixed_tss = 0
+    variable_step_line = ""
+    for line in template['description'].split('\n'):
+        if '{{ DURATION }}' in line:
+            variable_step_line = line
+        else:
+            fixed_tss += _calculate_tss_for_step(line)
+    
+    tss_for_variable_part = target_tss - fixed_tss
+    final_description = ""
+
+    if variable_step_line:
+        intensity_match = re.search(r'(\d{1,3})%', variable_step_line)
+        main_set_pct = int(intensity_match.group(1)) / 100.0 if intensity_match else 0
+        main_set_duration_min = 0
+        if tss_for_variable_part > 0 and main_set_pct > 0:
+            main_set_if_squared = main_set_pct**2
+            main_set_duration_hr = tss_for_variable_part / (main_set_if_squared * 100)
+            main_set_duration_min = round(main_set_duration_hr * 60)
+        variable_line_final = variable_step_line.replace('{{ DURATION }}', f'{main_set_duration_min}m')
+        final_description = template['description'].replace(variable_step_line, variable_line_final)
+    else:
+        final_description = template['description']
+
+    # --- Rationale Generation ---
+    split_info_html = ""
+    if total_parts and total_parts > 1:
+        split_info_html = f"""
+    <tr>
+        <td>Split:</td>
+        <td>Part {part_num} of {total_parts}</td>
+    </tr>"""
+
     rationale_string = f"""
 <h3>Auto-Plan Rationale</h3>
 <table>
@@ -91,7 +151,7 @@ def build_z2_workout_for_tss(tss_details, current_ctl, current_atl, goals_config
         td:first-child {{
             padding-right: 5px; text-align: right;
         }}
-    </style>
+    </style>{split_info_html}
     <tr>
         <td>TSB Limit: </td>
         <td>{goals_config['target_tsb']:.1f}</td>
@@ -121,94 +181,111 @@ def build_z2_workout_for_tss(tss_details, current_ctl, current_atl, goals_config
         <td>{tss_details['final_tss']:.1f} ({tss_details['reason']})</td>
     </tr>
 </table>"""
-    final_description = f"{workout_steps}\n{rationale_string}"
-    workout_object = {"category": "WORKOUT", "type": "Ride", "name": f"{name_prefix} {round(target_tss)} TSS", "start_date_local": workout_datetime.isoformat(), "description": final_description, "load": round(target_tss)}
-    return workout_object
+
+    final_description = f"{final_description}\n{rationale_string}"
+
+    return {
+        "category": "WORKOUT", "type": "Ride",
+        "name": workout_name,
+        "start_date_local": workout_datetime.isoformat(),
+        "description": final_description,
+        "load": round(target_tss)
+    }
 
 # ==============================================================================
-# --- MAIN HANDLER (Updated with more logging) ---
+# --- MAIN HANDLER (Updated to pass more info to workout builder) ---
 # ==============================================================================
 def main_handler(event, context):
-    """This is the main entry point for the GitHub Action."""
+    """Main entry point for the GitHub Action."""
+    print("--- Daily Training Plan Script Initialized ---")
     
-    # --- ADDED: More detailed initial logging ---
-    run_timestamp_utc = datetime.now(timezone.utc)
-    print(f"--- Daily Training Plan Script v{SCRIPT_VERSION} Initialized ---")
-    print(f"Run Timestamp (UTC): {run_timestamp_utc.isoformat()}")
-    
+    global config # Make config globally accessible within this handler for simplicity
     try:
         with open("config.json") as f:
             config = json.load(f)
-    except FileNotFoundError:
-        print("ERROR: config.json not found.")
-        return
-    except json.JSONDecodeError:
-        print("ERROR: Could not parse config.json.")
-        return
+    except (FileNotFoundError, json.JSONDecodeError) as e:
+        print(f"ERROR loading config.json: {e}"); return
 
     try:
         user_timezone_str = config['operational_settings']['timezone']
         user_timezone = ZoneInfo(user_timezone_str)
         today = datetime.now(user_timezone).date()
     except (KeyError, ZoneInfoNotFoundError):
-        print(f"ERROR: Invalid or missing timezone in config.json. Using UTC as default.")
-        today = date.today()
-
-    # --- ADDED: Log the configuration being used for the run ---
-    print("\n--- Using configuration ---")
-    print(f"Timezone: {user_timezone_str}")
-    print("Training Goals:", json.dumps(config.get('training_goals'), indent=2))
-    print("Workout Settings:", json.dumps(config.get('workout_settings'), indent=2))
-    print("---------------------------\n")
+        print("ERROR: Invalid or missing timezone. Using UTC."); today = date.today()
 
     try:
-        api_key = os.environ['API_KEY']
-        athlete_id = os.environ['ATHLETE_ID']
-    except KeyError as e:
-        print(f"ERROR: Missing secret environment variable: {e}")
-        return
+        api_key = os.environ['API_KEY']; athlete_id = os.environ['ATHLETE_ID']
+    except KeyError as e: print(f"ERROR: Missing secret environment variable: {e}"); return
 
     api = IntervalsAPI(athlete_id, api_key)
-
-    print(f"Fetching current state for user's local date: {today.isoformat()}")
+    print(f"Fetching current state for user's local date: {today.isoformat()} ({user_timezone_str})")
     state = api.get_current_state(for_date=today)
-    if not state:
-        print("Halting script due to API error.")
-        return
+    if not state: print("Halting script due to API error."); return
     
-    current_ctl = state['ctl']
-    current_atl = state['atl']
+    current_ctl, current_atl = state['ctl'], state['atl']
     print(f"Current State -> CTL: {current_ctl:.2f}, ATL: {current_atl:.2f}")
 
-    tss_details_tomorrow = calculate_next_day_tss(current_ctl, current_atl, config['training_goals'])
-    print(f"Calculation -> Target TSS for tomorrow: {tss_details_tomorrow['final_tss']:.2f} ({tss_details_tomorrow['reason']})")
-    
+    total_target_tss_details = calculate_next_day_tss(current_ctl, current_atl, config['training_goals'])
+    total_target_tss = total_target_tss_details['final_tss']
+    print(f"Calculation -> Total Target TSS for tomorrow: {total_target_tss:.2f} ({total_target_tss_details['reason']})")
+
     tomorrow = today + timedelta(days=1)
-    workout_to_upload = build_z2_workout_for_tss(
-        tss_details_tomorrow, 
-        current_ctl, 
-        current_atl, 
-        config['training_goals'], 
-        config['workout_settings'], 
-        workout_date=tomorrow
-    )
-    print("Workout Builder -> Generated workout object:")
-    if workout_to_upload and isinstance(workout_to_upload, dict):
-        desc = workout_to_upload.pop('description', '')
-        print(json.dumps(workout_to_upload, indent=2))
-        workout_to_upload['description'] = desc
-    else:
-        print(workout_to_upload)
+    day_name = tomorrow.strftime('%A').lower()
+    day_plan = config['weekly_schedule'].get(day_name, config['weekly_schedule']['default'])
+
+    workouts_to_create = []
+    
+    if isinstance(day_plan, str) and '*' in day_plan:
+        template_name, _, count = day_plan.partition('*')
+        template_name = template_name.strip()
+        num_workouts = int(count.strip())
+        if num_workouts > 0 and template_name in config['workout_templates']:
+            tss_per_workout = total_target_tss / num_workouts
+            print(f"Planning {num_workouts} workouts with evenly split TSS of {tss_per_workout:.1f} each.")
+            for i in range(num_workouts):
+                workouts_to_create.append(build_workout_from_template(
+                    tss_per_workout, config['workout_templates'][template_name], tomorrow, 
+                    total_target_tss_details, config['training_goals'], current_ctl, current_atl, i + 1, num_workouts
+                ))
+    elif isinstance(day_plan, list):
+        if len(day_plan) == 1:
+            template_name = day_plan[0]
+            if template_name in config['workout_templates']:
+                print(f"Planning 1 workout with total TSS of {total_target_tss:.1f}.")
+                workouts_to_create.append(build_workout_from_template(
+                    total_target_tss, config['workout_templates'][template_name], tomorrow,
+                    total_target_tss_details, config['training_goals'], current_ctl, current_atl
+                ))
+        elif len(day_plan) > 1:
+            fixed_template_name = day_plan[0]
+            if fixed_template_name in config['workout_templates']:
+                fixed_template = config['workout_templates'][fixed_template_name]
+                fixed_tss = sum(_calculate_tss_for_step(line) for line in fixed_template['description'].split('\n'))
+                print(f"Planning a double day. Fixed workout '{fixed_template_name}' contributes {fixed_tss:.1f} TSS.")
+                workouts_to_create.append(build_workout_from_template(
+                    fixed_tss, fixed_template, tomorrow, 
+                    total_target_tss_details, config['training_goals'], current_ctl, current_atl, 1, len(day_plan)
+                ))
+                remaining_tss = total_target_tss - fixed_tss
+                variable_template_name = day_plan[1]
+                if variable_template_name in config['workout_templates']:
+                     print(f"Variable workout '{variable_template_name}' will target remaining {remaining_tss:.1f} TSS.")
+                     workouts_to_create.append(build_workout_from_template(
+                         remaining_tss, config['workout_templates'][variable_template_name], tomorrow,
+                         total_target_tss_details, config['training_goals'], current_ctl, current_atl, 2, len(day_plan)
+                     ))
 
     print("-" * 20)
     if config['operational_settings'].get('live_mode', False):
-        if workout_to_upload:
-            print("LIVE MODE IS ON. Uploading workout to Intervals.icu...")
-            api.create_workout(workout_to_upload)
+        if workouts_to_create:
+            print(f"LIVE MODE IS ON. Uploading {len(workouts_to_create)} workout(s) to Intervals.icu...")
+            for workout in workouts_to_create:
+                if workout and workout.get("load", 0) > 0:
+                    api.create_workout(workout)
         else:
-            print("LIVE MODE IS ON, but workout object could not be generated.")
+            print("LIVE MODE IS ON, but no workouts were generated for the plan.")
     else:
-        print("DRY RUN MODE IS ON. No workout was uploaded.")
+        print(f"DRY RUN MODE IS ON. Would have created {len(workouts_to_create)} workout(s).")
     
     print("--- Script Finished ---")
     return "OK"

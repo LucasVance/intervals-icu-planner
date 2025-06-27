@@ -6,14 +6,24 @@
     "target_tsb": -25.0,
     "alb_lower_bound": -30.0
   },
-  "workout_settings": {
-    "power_target_pct": 0.65,
-    "ramp_duration_min": 1,
-    "ramp_start_pct": 0.4
+  "workout_templates": {
+    "endurance": {
+      "name": "Endurance",
+      "description": "- 1m ramp 40%-65% FTP\n- {{ DURATION }} 65% FTP"
+    },
+    "morning": {
+      "name": "Morning endurance",
+      "description": "- 1m ramp 40%-65% FTP\n- 59m 65% FTP"
+    }
+  },
+  "weekly_schedule": {
+    "saturday": "endurance *2",
+    "sunday": "endurance *2",
+    "default": ["morning", "endurance"]
   },
   "operational_settings": {
     "live_mode": true,
-    "workout_name_prefix": "Auto-Plan:",
+    "workout_name_prefix": "",
     "timezone": "America/Los_Angeles"
   }
 }
