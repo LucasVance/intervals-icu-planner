@@ -4,16 +4,16 @@
     "atl_days": 4,
     "target_ctl": 150.0,
     "target_tsb": -40.0,
-    "alb_lower_bound": -40.0
+    "alb_lower_bound": -20.0
   },
   "workout_templates": {
     "endurance": {
       "name": "Endurance",
-      "description": "- 1m ramp 40%-60% FTP\n- {{ DURATION }} 60% FTP"
+      "description": "- 1m ramp 40%-60%\n- {{ DURATION }} 60%"
     },
     "morning": {
       "name": "Morning",
-      "description": "- 1m ramp 40%-60% FTP\n- 59m 60% FTP"
+      "description": "- 1m ramp 40%-60%\n- 59m 60%"
     }
   },
   "weekly_schedule": {
