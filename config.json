@@ -3,7 +3,7 @@
     "ctl_days": 40,
     "atl_days": 4,
     "target_ctl": 150.0,
-    "target_tsb": -40.0,
+    "target_tsb": -36.0,
     "alb_lower_bound": -10.0
   },
   "workout_templates": {
