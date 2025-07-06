@@ -42,7 +42,7 @@ class IntervalsAPI:
             return None
 
 # ==============================================================================
-# --- CALCULATION ENGINE (Updated to return full details) ---
+# --- CALCULATION ENGINE (Unchanged) ---
 # ==============================================================================
 def calculate_next_day_tss(current_ctl, current_atl, goals_config):
     """Calculates the target TSS and returns a dictionary with calculation details."""
@@ -69,7 +69,7 @@ def calculate_next_day_tss(current_ctl, current_atl, goals_config):
     }
 
 # ==============================================================================
-# --- NEW: Lightweight Projection Function ---
+# --- NEW: Lightweight Projection Function (Unchanged) ---
 # ==============================================================================
 def estimate_days_to_target(start_ctl, start_atl, goals_config):
     """
@@ -104,7 +104,7 @@ def estimate_days_to_target(start_ctl, start_atl, goals_config):
     return -1 # Return -1 if target is not reached within the projection window
 
 # ==============================================================================
-# --- WORKOUT BUILDER (Updated with HTML Rationale) ---
+# --- WORKOUT BUILDER (Updated with new name logic) ---
 # ==============================================================================
 def _calculate_tss_for_step(step_string):
     """Calculates the TSS for a single line from a workout description."""
@@ -132,11 +132,20 @@ def build_workout_from_template(target_tss, template, workout_date, tss_details,
     if part_num and part_num > 1:
         workout_datetime += timedelta(hours=10)
 
-    name_prefix = config['operational_settings'].get("name_prefix", "Auto-Plan:")
-    workout_name = f"{name_prefix} {template['name']}"
+    # --- MODIFIED: Correctly handle the workout name prefix ---
+    # Get the prefix from config; it will be None if the key doesn't exist.
+    name_prefix = config['operational_settings'].get("workout_name_prefix")
+
+    # Start with the base template name.
+    workout_name = template['name']
+    # If a prefix exists and isn't just whitespace, prepend it.
+    if name_prefix and name_prefix.strip():
+        workout_name = f"{name_prefix.strip()} {workout_name}"
+
     if total_parts and total_parts > 1:
         workout_name += f" ({part_num}/{total_parts})"
-
+    # --- END OF MODIFICATION ---
+    
     # Workout Step Generation
     fixed_tss = 0
     variable_step_line = ""
@@ -228,7 +237,7 @@ def build_workout_from_template(target_tss, template, workout_date, tss_details,
     }
 
 # ==============================================================================
-# --- MAIN HANDLER (Updated to call estimator and pass result) ---
+# --- MAIN HANDLER (Unchanged) ---
 # ==============================================================================
 def main_handler(event, context):
     """Main entry point for the GitHub Action."""

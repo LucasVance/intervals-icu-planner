@@ -2,17 +2,17 @@
   "training_goals": {
     "ctl_days": 40,
     "atl_days": 4,
-    "target_ctl": 150.0,
+    "target_ctl": 130.0,
     "target_tsb": -36.0,
     "alb_lower_bound": -10.0
   },
   "workout_templates": {
     "endurance": {
-      "name": "Endurance",
-      "description": "- 1m ramp 40%-60%\n- {{ DURATION }} 60%"
+      "name": "Afternoon endurance",
+      "description": "- 1m ramp 40%-65%\n- {{ DURATION }} 65%"
     },
     "morning": {
-      "name": "Morning",
+      "name": "Morning endurance",
       "description": "- 1m ramp 40%-60%\n- 59m 60%"
     }
   },
