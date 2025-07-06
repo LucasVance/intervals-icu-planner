@@ -8,11 +8,11 @@
   },
   "workout_templates": {
     "endurance": {
-      "name": "Afternoon endurance",
+      "name": "Endurance",
       "description": "- 1m ramp 40%-65%\n- {{ DURATION }} 65%"
     },
     "morning": {
-      "name": "Morning endurance",
+      "name": "_Morning",
       "description": "- 1m ramp 40%-60%\n- 59m 60%"
     }
   },
