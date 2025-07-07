@@ -42,14 +42,29 @@ class IntervalsAPI:
             return None
 
 # ==============================================================================
-# --- CALCULATION ENGINE (Unchanged) ---
+# --- CALCULATION ENGINE (Corrected) ---
 # ==============================================================================
 def calculate_next_day_tss(current_ctl, current_atl, goals_config):
     """Calculates the target TSS and returns a dictionary with calculation details."""
-    # This uses the older, hardcoded 42/7 constants from the uploaded main.py
-    # To make this configurable, we would read ctl_days and atl_days from config
-    tss_for_tsb_goal = (41 * current_ctl - 36 * current_atl - 42 * goals_config['target_tsb']) / 5
-    # This uses the improved ALB definition
+    
+    # Get the configured time constants.
+    c = goals_config.get('ctl_days', 42)
+    a = goals_config.get('atl_days', 7)
+    target_tsb = goals_config.get('target_tsb', 0)
+
+    # --- NEW: Generalized formula for any time constants ---
+    # This formula solves for the TSS needed tomorrow to hit the target TSB.
+    # It is derived from the core PMC equations:
+    # TSB_tomorrow = CTL_tomorrow - ATL_tomorrow
+    # CTL_tomorrow = CTL_today * (C-1)/C + TSS * 1/C
+    # ATL_tomorrow = ATL_today * (A-1)/A + TSS * 1/A
+    numerator = target_tsb - (current_ctl * (c - 1) / c) + (current_atl * (a - 1) / a)
+    denominator = (1 / c) - (1 / a)
+    
+    # Avoid division by zero if c == a
+    tss_for_tsb_goal = numerator / denominator if denominator != 0 else 0
+    # --- END OF CORRECTION ---
+
     tss_cap_from_alb = current_atl - goals_config['alb_lower_bound']
 
     reason = "TSB Driven"
@@ -69,7 +84,7 @@ def calculate_next_day_tss(current_ctl, current_atl, goals_config):
     }
 
 # ==============================================================================
-# --- NEW: Lightweight Projection Function (Unchanged) ---
+# --- Lightweight Projection Function (Unchanged) ---
 # ==============================================================================
 def estimate_days_to_target(start_ctl, start_atl, goals_config):
     """
@@ -89,9 +104,7 @@ def estimate_days_to_target(start_ctl, start_atl, goals_config):
         return 0
 
     for days_out in range(1, 365 * 3): # Max 3 year projection
-        # We need a simplified TSS calculation for the projection
-        # We can't use the full `calculate_next_day_tss` as it's based on the older model
-        # Let's use a generic calculation based on the provided goals_config
+        # This now correctly calls the updated, dynamic calculation function.
         tss_details = calculate_next_day_tss(ctl_current, atl_current, goals_config)
         tss_needed = tss_details['final_tss']
         
@@ -104,7 +117,7 @@ def estimate_days_to_target(start_ctl, start_atl, goals_config):
     return -1 # Return -1 if target is not reached within the projection window
 
 # ==============================================================================
-# --- WORKOUT BUILDER (Updated with new name logic) ---
+# --- WORKOUT BUILDER (Unchanged) ---
 # ==============================================================================
 def _calculate_tss_for_step(step_string):
     """Calculates the TSS for a single line from a workout description."""
@@ -128,23 +141,17 @@ def _calculate_tss_for_step(step_string):
 def build_workout_from_template(target_tss, template, workout_date, tss_details, goals_config, current_ctl, current_atl, days_to_target, part_num=None, total_parts=None):
     """Builds a workout object, including a detailed HTML rationale."""
     
-    workout_datetime = datetime.combine(workout_date, time(7, 0))
+    workout_datetime = datetime.combine(workout_date, time(9, 0))
     if part_num and part_num > 1:
         workout_datetime += timedelta(hours=10)
 
-    # --- MODIFIED: Correctly handle the workout name prefix ---
-    # Get the prefix from config; it will be None if the key doesn't exist.
     name_prefix = config['operational_settings'].get("workout_name_prefix")
-
-    # Start with the base template name.
     workout_name = template['name']
-    # If a prefix exists and isn't just whitespace, prepend it.
     if name_prefix and name_prefix.strip():
         workout_name = f"{name_prefix.strip()} {workout_name}"
 
     if total_parts and total_parts > 1:
         workout_name += f" ({part_num}/{total_parts})"
-    # --- END OF MODIFICATION ---
     
     # Workout Step Generation
     fixed_tss = 0
@@ -241,7 +248,7 @@ def build_workout_from_template(target_tss, template, workout_date, tss_details,
 # ==============================================================================
 def main_handler(event, context):
     """Main entry point for the GitHub Action."""
-    print("--- Daily Training Plan Script v1.3.0 Initialized ---")
+    print("--- Daily Training Plan Script v1.4.0 Initialized ---")
     
     global config
     try:
@@ -270,7 +277,6 @@ def main_handler(event, context):
     current_ctl, current_atl = state['ctl'], state['atl']
     print(f"Current State -> CTL: {current_ctl:.2f}, ATL: {current_atl:.2f}")
 
-    # --- NEW: Run the estimation ---
     days_to_target = estimate_days_to_target(current_ctl, current_atl, config['training_goals'])
     print(f"Estimation -> Days to reach target CTL: {days_to_target if days_to_target != -1 else 'N/A'}")
 
@@ -318,11 +324,11 @@ def main_handler(event, context):
                 remaining_tss = total_target_tss - fixed_tss
                 variable_template_name = day_plan[1]
                 if variable_template_name in config['workout_templates']:
-                     print(f"Variable workout '{variable_template_name}' will target remaining {remaining_tss:.1f} TSS.")
-                     workouts_to_create.append(build_workout_from_template(
-                         remaining_tss, config['workout_templates'][variable_template_name], tomorrow,
-                         total_target_tss_details, config['training_goals'], current_ctl, current_atl, days_to_target, 2, len(day_plan)
-                     ))
+                    print(f"Variable workout '{variable_template_name}' will target remaining {remaining_tss:.1f} TSS.")
+                    workouts_to_create.append(build_workout_from_template(
+                        remaining_tss, config['workout_templates'][variable_template_name], tomorrow,
+                        total_target_tss_details, config['training_goals'], current_ctl, current_atl, days_to_target, 2, len(day_plan)
+                    ))
 
     print("-" * 20)
     if config['operational_settings'].get('live_mode', False):
