@@ -12,7 +12,7 @@
       "description": "- 1m ramp 40%-65%\n- {{ DURATION }} 65%"
     },
     "morning": {
-      "name": "_Morning",
+      "name": "Morning",
       "description": "- 1m ramp 40%-60%\n- 59m 60%"
     }
   },
