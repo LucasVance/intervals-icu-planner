@@ -4,7 +4,7 @@
     "atl_days": 4,
     "target_ctl": 130.0,
     "target_tsb": -36.0,
-    "alb_lower_bound": -10.0
+    "alb_lower_bound": -20.0
   },
   "workout_templates": {
     "endurance": {
