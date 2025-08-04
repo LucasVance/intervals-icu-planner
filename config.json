@@ -1,9 +1,9 @@
 {
   "training_goals": {
     "ctl_days": 42,
-    "atl_days": 4,
+    "atl_days": 7,
     "target_ctl": 140.0,
-    "target_tsb": -27.0,
+    "target_tsb": -25.0,
     "alb_lower_bound": -40.0
   },
   "workout_templates": {
