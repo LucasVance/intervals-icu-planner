@@ -2,14 +2,14 @@
   "training_goals": {
     "ctl_days": 42,
     "atl_days": 7,
-    "target_ctl": 140.0,
+    "target_ctl": 180.0,
     "target_tsb": -25.0,
     "alb_lower_bound": -40.0
   },
   "workout_templates": {
     "endurance": {
       "name": "Endurance",
-      "description": "- 1m ramp 40%-65%\n- {{ DURATION }} 65%"
+      "description": "{{ DURATION }} 65%"
     },
     "morning": {
       "name": "Morning",
@@ -17,9 +17,7 @@
     }
   },
   "weekly_schedule": {
-    "saturday": "endurance *2",
-    "sunday": "endurance *2",
-    "default": ["morning", "endurance"]
+    "default": "endurance"
   },
   "operational_settings": {
     "live_mode": true,
