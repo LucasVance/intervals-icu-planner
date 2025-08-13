@@ -9,7 +9,7 @@
   "workout_templates": {
     "endurance": {
       "name": "Endurance",
-      "description": "{{ DURATION }} 65%"
+      "description": "- {{ DURATION }} 65%"
     },
     "morning": {
       "name": "Morning",
@@ -17,7 +17,7 @@
     }
   },
   "weekly_schedule": {
-    "default": "endurance"
+    "default": ["endurance"]
   },
   "operational_settings": {
     "live_mode": true,
