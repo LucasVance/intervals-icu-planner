@@ -43,7 +43,7 @@ class IntervalsAPI:
     def get_events(self, start_date: date, end_date: date):
         start_str = start_date.isoformat()
         end_str = end_date.isoformat()
-        url = f"{self.athlete_url}/events?start={start_str}&end={end_str}"
+        url = f"{self.athlete_url}/events?oldest={start_str}&newest={end_str}"
         try:
             response = requests.get(url, auth=self.auth, timeout=10)
             response.raise_for_status()
@@ -302,7 +302,11 @@ def main_handler(event, context):
 
     # --- New: Check for existing workouts and adjust TSS ---
     existing_workouts = api.get_events(tomorrow, tomorrow)
-    existing_tss = sum(workout.get('icu_training_load') or 0 for workout in existing_workouts)
+    existing_tss = sum(
+        workout.get('icu_training_load') or 0
+        for workout in existing_workouts
+        if workout.get("start_date_local", "").startswith(tomorrow.isoformat())
+    )
 
     if existing_tss > 0:
         print(f"Adjustment -> Found {existing_tss:.0f} TSS already planned for {tomorrow.isoformat()}.")
@@ -337,23 +341,44 @@ def main_handler(event, context):
                     total_target_tss_details, config['training_goals'], current_ctl, current_atl, days_to_target
                 ))
         elif len(day_plan) > 1:
-            fixed_template_name = day_plan[0]
-            if fixed_template_name in config['workout_templates']:
-                fixed_template = config['workout_templates'][fixed_template_name]
-                fixed_tss = sum(_calculate_tss_for_step(line) for line in fixed_template['description'].split('\n'))
-                print(f"Planning a double day. Fixed workout '{fixed_template_name}' contributes {fixed_tss:.1f} TSS.")
-                workouts_to_create.append(build_workout_from_template(
-                    fixed_tss, fixed_template, tomorrow, 
-                    total_target_tss_details, config['training_goals'], current_ctl, current_atl, days_to_target, 1, len(day_plan)
-                ))
-                remaining_tss = total_target_tss - fixed_tss
+            # For double days, check if workouts already exist.
+            # If they do, assume they are the first part of the double.
+            # The script will then only create the second part with the remaining TSS.
+            if existing_tss > 0:
                 variable_template_name = day_plan[1]
                 if variable_template_name in config['workout_templates']:
-                    print(f"Variable workout '{variable_template_name}' will target remaining {remaining_tss:.1f} TSS.")
+                    print(f"Adjustment -> Assuming existing workout is part 1 of 2. Planning part 2 ('{variable_template_name}') with remaining {total_target_tss:.1f} TSS.")
                     workouts_to_create.append(build_workout_from_template(
-                        remaining_tss, config['workout_templates'][variable_template_name], tomorrow,
-                        total_target_tss_details, config['training_goals'], current_ctl, current_atl, days_to_target, 2, len(day_plan)
+                        total_target_tss, # Use the already-adjusted total TSS
+                        config['workout_templates'][variable_template_name],
+                        tomorrow,
+                        total_target_tss_details,
+                        config['training_goals'],
+                        current_ctl,
+                        current_atl,
+                        days_to_target,
+                        part_num=2,
+                        total_parts=2
                     ))
+            # If no workouts exist, create both from scratch.
+            else:
+                fixed_template_name = day_plan[0]
+                if fixed_template_name in config['workout_templates']:
+                    fixed_template = config['workout_templates'][fixed_template_name]
+                    fixed_tss = sum(_calculate_tss_for_step(line) for line in fixed_template['description'].split('\n'))
+                    print(f"Planning a double day. Fixed workout '{fixed_template_name}' contributes {fixed_tss:.1f} TSS.")
+                    workouts_to_create.append(build_workout_from_template(
+                        fixed_tss, fixed_template, tomorrow, 
+                        total_target_tss_details, config['training_goals'], current_ctl, current_atl, days_to_target, 1, len(day_plan)
+                    ))
+                    remaining_tss = total_target_tss - fixed_tss
+                    variable_template_name = day_plan[1]
+                    if variable_template_name in config['workout_templates']:
+                        print(f"Variable workout '{variable_template_name}' will target remaining {remaining_tss:.1f} TSS.")
+                        workouts_to_create.append(build_workout_from_template(
+                            remaining_tss, config['workout_templates'][variable_template_name], tomorrow,
+                            total_target_tss_details, config['training_goals'], current_ctl, current_atl, days_to_target, 2, len(day_plan)
+                        ))
 
     print("-" * 20)
     if config['operational_settings'].get('live_mode', False):
