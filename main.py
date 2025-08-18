@@ -40,6 +40,20 @@ class IntervalsAPI:
             print(f"ERROR: Failed to create workout: {e}")
             if e.response is not None: print(f"Server Response: {e.response.text}")
             return None
+    def get_events(self, start_date: date, end_date: date):
+        start_str = start_date.isoformat()
+        end_str = end_date.isoformat()
+        url = f"{self.athlete_url}/events?start={start_str}&end={end_str}"
+        try:
+            response = requests.get(url, auth=self.auth, timeout=10)
+            response.raise_for_status()
+            return response.json()
+        except requests.exceptions.RequestException as e:
+            print(f"ERROR: Could not fetch events from Intervals.icu: {e}")
+            return []
+        except json.JSONDecodeError:
+            print("ERROR: Could not decode JSON response for events.")
+            return []
 
 # ==============================================================================
 # --- CALCULATION ENGINE (Corrected) ---
@@ -282,9 +296,20 @@ def main_handler(event, context):
 
     total_target_tss_details = calculate_next_day_tss(current_ctl, current_atl, config['training_goals'])
     total_target_tss = total_target_tss_details['final_tss']
-    print(f"Calculation -> Total Target TSS for tomorrow: {total_target_tss:.2f} ({total_target_tss_details['reason']})")
+    print(f"Calculation -> Gross Target TSS for tomorrow: {total_target_tss:.2f} ({total_target_tss_details['reason']})")
 
     tomorrow = today + timedelta(days=1)
+
+    # --- New: Check for existing workouts and adjust TSS ---
+    existing_workouts = api.get_events(tomorrow, tomorrow)
+    existing_tss = sum(workout.get('icu_training_load') or 0 for workout in existing_workouts)
+
+    if existing_tss > 0:
+        print(f"Adjustment -> Found {existing_tss:.0f} TSS already planned for {tomorrow.isoformat()}.")
+        total_target_tss = max(0, total_target_tss - existing_tss)
+        print(f"Adjustment -> Net Target TSS for generated workout(s): {total_target_tss:.2f}")
+    # --- End New ---
+
     day_name = tomorrow.strftime('%A').lower()
     day_plan = config['weekly_schedule'].get(day_name, config['weekly_schedule']['default'])
 
