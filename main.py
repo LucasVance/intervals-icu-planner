@@ -33,7 +33,7 @@ class IntervalsAPI:
     def get_custom_chart_state(self, chart_id, fitness_key, fatigue_key, for_date: date):
         """Fetches custom chart values such as kJ fitness and kJ fatigue."""
         date_str = for_date.isoformat()
-        url = f"{self.athlete_url}/charts/{chart_id}?oldest={date_str}&newest={date_str}"
+        url = f"{self.athlete_url}/custom-item/{chart_id}?oldest={date_str}&newest={date_str}"
         try:
             response = requests.get(url, auth=self.auth, timeout=10)
             response.raise_for_status()
