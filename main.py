@@ -29,6 +29,30 @@ class IntervalsAPI:
             return {"ctl": data.get('ctl'), "atl": data.get('atl')}
         except requests.exceptions.RequestException as e: print(f"ERROR: Could not connect to Intervals.icu API: {e}"); return None
         except json.JSONDecodeError: print(f"ERROR: Could not decode JSON response from API."); return None
+
+    def get_custom_chart_state(self, chart_id, fitness_key, fatigue_key, for_date: date):
+        """Fetches custom chart values such as kJ fitness and kJ fatigue."""
+        date_str = for_date.isoformat()
+        url = f"{self.athlete_url}/charts/{chart_id}?oldest={date_str}&newest={date_str}"
+        try:
+            response = requests.get(url, auth=self.auth, timeout=10)
+            response.raise_for_status()
+            chart = response.json()
+            series = chart.get('series', {})
+            fitness_series = series.get(fitness_key, {}).get('data', [])
+            fatigue_series = series.get(fatigue_key, {}).get('data', [])
+            if not fitness_series or not fatigue_series:
+                return None
+            return {
+                "fitness": fitness_series[0].get('y'),
+                "fatigue": fatigue_series[0].get('y')
+            }
+        except requests.exceptions.RequestException as e:
+            print(f"ERROR: Could not fetch custom chart data: {e}")
+            return None
+        except json.JSONDecodeError:
+            print("ERROR: Could not decode JSON response for custom chart.")
+            return None
     def create_workout(self, workout_data: dict):
         url = f"{self.athlete_url}/events"
         try:
@@ -56,45 +80,46 @@ class IntervalsAPI:
             return []
 
 # ==============================================================================
-# --- CALCULATION ENGINE (Corrected) ---
+# --- CALCULATION ENGINE ---
 # ==============================================================================
-def calculate_next_day_tss(current_ctl, current_atl, goals_config):
-    """Calculates the target TSS and returns a dictionary with calculation details."""
-    
-    # Get the configured time constants.
-    c = goals_config.get('ctl_days', 42)
-    a = goals_config.get('atl_days', 7)
-    target_tsb = goals_config.get('target_tsb', 0)
+def calculate_next_day_load(current_fitness, current_fatigue, goals_config):
+    """Calculates target load (e.g., kJ) using configurable balance guidelines."""
 
-    # --- NEW: Generalized formula for any time constants ---
-    # This formula solves for the TSS needed tomorrow to hit the target TSB.
-    # It is derived from the core PMC equations:
-    # TSB_tomorrow = CTL_tomorrow - ATL_tomorrow
-    # CTL_tomorrow = CTL_today * (C-1)/C + TSS * 1/C
-    # ATL_tomorrow = ATL_today * (A-1)/A + TSS * 1/A
-    numerator = target_tsb - (current_ctl * (c - 1) / c) + (current_atl * (a - 1) / a)
+    c = goals_config.get('ctl_days') or goals_config.get('fitness_days', 42)
+    a = goals_config.get('atl_days') or goals_config.get('fatigue_days', 7)
+    target_balance = goals_config.get('target_tsb') or goals_config.get('target_balance', 0)
+    alb_lower = goals_config.get('alb_lower_bound', 0)
+
+    numerator = target_balance - (current_fitness * (c - 1) / c) + (current_fatigue * (a - 1) / a)
     denominator = (1 / c) - (1 / a)
-    
-    # Avoid division by zero if c == a
-    tss_for_tsb_goal = numerator / denominator if denominator != 0 else 0
-    # --- END OF CORRECTION ---
+    load_for_balance_goal = numerator / denominator if denominator != 0 else 0
 
-    tss_cap_from_alb = current_atl - goals_config['alb_lower_bound']
+    load_cap_from_alb = current_fatigue - alb_lower
 
-    reason = "TSB Driven"
-    final_tss = tss_for_tsb_goal
-
-    if final_tss > tss_cap_from_alb:
-        final_tss = tss_cap_from_alb
+    final_load = load_for_balance_goal
+    reason = "Balance Driven"
+    if final_load > load_cap_from_alb:
+        final_load = load_cap_from_alb
         reason = "ALB Driven"
 
-    final_tss = max(0, final_tss)
+    final_load = max(0, final_load)
 
     return {
-        "final_tss": final_tss,
-        "tss_for_tsb_goal": tss_for_tsb_goal,
-        "tss_cap_from_alb": tss_cap_from_alb,
+        "final_load": final_load,
+        "load_for_balance_goal": load_for_balance_goal,
+        "load_cap_from_alb": load_cap_from_alb,
         "reason": reason
+    }
+
+
+def calculate_next_day_tss(current_ctl, current_atl, goals_config):
+    """Wrapper to maintain TSS-specific terminology for existing functionality."""
+    result = calculate_next_day_load(current_ctl, current_atl, goals_config)
+    return {
+        "final_tss": result["final_load"],
+        "tss_for_tsb_goal": result["load_for_balance_goal"],
+        "tss_cap_from_alb": result["load_cap_from_alb"],
+        "reason": result["reason"],
     }
 
 # ==============================================================================
@@ -287,9 +312,24 @@ def main_handler(event, context):
     print(f"Fetching current state for user's local date: {today.isoformat()} ({user_timezone_str})")
     state = api.get_current_state(for_date=today)
     if not state: print("Halting script due to API error."); return
-    
+
     current_ctl, current_atl = state['ctl'], state['atl']
     print(f"Current State -> CTL: {current_ctl:.2f}, ATL: {current_atl:.2f}")
+
+    # Optional: fetch kJ-based fitness/fatigue from a custom chart
+    energy_cfg = config.get('energy_guidelines')
+    if energy_cfg:
+        chart_id = energy_cfg.get('chart_id')
+        fitness_key = energy_cfg.get('fitness_key', 'kJ fitness')
+        fatigue_key = energy_cfg.get('fatigue_key', 'kJ fatigue')
+        energy_state = api.get_custom_chart_state(chart_id, fitness_key, fatigue_key, today)
+        if energy_state:
+            kj_details = calculate_next_day_load(energy_state['fitness'], energy_state['fatigue'], energy_cfg)
+            print(
+                f"kJ Guidelines -> Target load for tomorrow: {kj_details['final_load']:.1f} ({kj_details['reason']})"
+            )
+        else:
+            print("WARNING: Could not retrieve kJ fitness/fatigue data from custom chart.")
 
     days_to_target = estimate_days_to_target(current_ctl, current_atl, config['training_goals'])
     print(f"Estimation -> Days to reach target CTL: {days_to_target if days_to_target != -1 else 'N/A'}")
