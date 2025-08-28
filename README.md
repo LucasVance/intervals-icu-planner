@@ -16,6 +16,8 @@ This planner is built on the well-established principles of training load manage
 -   **TSB (Training Stress Balance):** Calculated as `CTL - ATL`, this represents your "form" or "freshness." A negative TSB is typical during a build phase. This script aims to hold your TSB at a specific target level.
     
 -   **ALB (Acute Load Balance):** Defined as `ATL (at the start of the day) - Daily TSS`. This acts as a "guard rail" to prevent excessively large single-day jumps in training stress, ensuring a smooth and sustainable progression.
+
+-   **kJ Fitness/Fatigue (Optional):** If you maintain a custom Intervals.icu chart with 42‑day and 7‑day weighted averages of daily kilojoules, the script can read those values and compute energy-based guidelines for the next day's workload. These work like TSB and ALB but operate purely on kJ instead of TSS.
     
 
 ## Features
@@ -102,6 +104,14 @@ This file holds all the non-sensitive parameters for your training plan. Edit th
 -   `target_tsb`: The daily TSB you want to hold during your training block.
     
 -   `alb_lower_bound`: The "floor" for daily training aggressiveness. A value of `-10` allows daily TSS to exceed the morning's ATL by about 10 points.
+
+#### `energy_guidelines` (optional)
+
+-   `chart_id`: The identifier of your custom Intervals.icu chart containing kJ fitness and fatigue.
+-   `fitness_key` / `fatigue_key`: Series names inside that chart for the 42‑day and 7‑day moving averages of daily kJ.
+-   `target_balance`: Desired `fitness - fatigue` level expressed in kJ.
+-   `alb_lower_bound`: Minimum acceptable value for `fatigue - today's load` in kJ.
+-   `ctl_days` & `atl_days`: Time constants for the kJ fitness and fatigue averages (default 42/7).
     
 
 #### `workout_templates`
