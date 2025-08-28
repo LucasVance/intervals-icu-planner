@@ -6,6 +6,15 @@
     "target_tsb": -25.0,
     "alb_lower_bound": -40.0
   },
+  "energy_guidelines": {
+    "chart_id": "732435",
+    "fitness_key": "1",
+    "fatigue_key": "2",
+    "target_balance": -500.0,
+    "alb_lower_bound": -800.0,
+    "ctl_days": 42,
+    "atl_days": 7
+  },
   "workout_templates": {
     "endurance": {
       "name": "Endurance",
