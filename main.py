@@ -164,6 +164,8 @@ def build_workout_from_template(target_tss, template, workout_date, tss_details,
     if name_prefix and name_prefix.strip():
         workout_name = f"{name_prefix.strip()} {workout_name}"
 
+    workout_name = f"{round(target_tss)} {workout_name}"
+
     if total_parts and total_parts > 1:
         workout_name += f" ({part_num}/{total_parts})"
     
