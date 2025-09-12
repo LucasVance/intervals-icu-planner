@@ -6,6 +6,15 @@
     "target_tsb": -30.0,
     "alb_lower_bound": -40.0
   },
+  "energy_guidelines": {
+    "chart_id": "custom_kj_chart",
+    "fitness_key": "kJ fitness",
+    "fatigue_key": "kJ fatigue",
+    "target_balance": -500.0,
+    "alb_lower_bound": -800.0,
+    "ctl_days": 42,
+    "atl_days": 7
+  },
   "workout_templates": {
     "endurance": {
       "name": "Endurance",
