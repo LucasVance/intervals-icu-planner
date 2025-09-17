@@ -3,13 +3,13 @@
     "ctl_days": 42,
     "atl_days": 7,
     "target_ctl": 180.0,
-    "target_tsb": -30.0,
+    "target_tsb": -20.0,
     "alb_lower_bound": -40.0
   },
   "workout_templates": {
     "endurance": {
       "name": "Endurance",
-      "description": "- 1m ramp 40%-65%\n- {{ DURATION }} 65%"
+      "description": "- 1m ramp 40%-61%\n- {{ DURATION }} 61%"
     },
     "morning": {
       "name": "Morning",
