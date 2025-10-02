@@ -7,9 +7,13 @@
     "alb_lower_bound": -40.0
   },
   "workout_templates": {
-    "endurance": {
+    "weekdays": {
       "name": "Endurance",
-      "description": "- 1m ramp 40%-61%\n- {{ DURATION }} 61%"
+      "description": "- 1m ramp 40%-63%\n- 2h59m 63%"
+    },
+    "weekends": {
+      "name": "Endurance",
+      "description": "- 1m ramp 40%-63%\n- {{ DURATION }} 63%"
     },
     "morning": {
       "name": "Morning",
