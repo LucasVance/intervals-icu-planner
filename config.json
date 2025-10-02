@@ -21,7 +21,9 @@
     }
   },
   "weekly_schedule": {
-    "default": ["endurance"]
+    "default": ["weekdays"],
+    "saturday": ["weekends"],
+    "sunday": ["weekends"]
   },
   "operational_settings": {
     "live_mode": true,
