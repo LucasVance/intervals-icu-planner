@@ -1,33 +1,33 @@
 {
-  "training_goals": {
-    "ctl_days": 42,
-    "atl_days": 7,
-    "target_ctl": 180.0,
-    "target_tsb": -20.0,
-    "alb_lower_bound": -40.0
-  },
-  "workout_templates": {
-    "weekdays": {
-      "name": "Endurance",
-      "description": "- 1m ramp 40%-63%\n- 2h59m 63%"
+    "training_goals": {
+        "ctl_days": 42,
+        "atl_days": 7,
+        "target_ctl": 180.0,
+        "target_tsb": -20.0,
+        "alb_lower_bound": -40.0
     },
-    "weekends": {
-      "name": "Endurance",
-      "description": "- 1m ramp 40%-63%\n- {{ DURATION }} 63%"
+    "workout_templates": {
+        "weekdays": {
+            "name": "Endurance",
+            "description": "- 1m ramp 40%-63%\n- 2h59m 63%"
+        },
+        "weekends": {
+            "name": "Endurance",
+            "description": "- 1m ramp 40%-63%\n- {{ DURATION }} 63%"
+        },
+        "morning": {
+            "name": "Morning",
+            "description": "- 1m ramp 40%-60%\n- 59m 60%"
+        }
     },
-    "morning": {
-      "name": "Morning",
-      "description": "- 1m ramp 40%-60%\n- 59m 60%"
+    "weekly_schedule": {
+        "default": ["weekends"],
+        "saturday": ["weekends"],
+        "sunday": ["weekends"]
+    },
+    "operational_settings": {
+        "live_mode": false,
+        "workout_name_prefix": "",
+        "timezone": "America/Los_Angeles"
     }
-  },
-  "weekly_schedule": {
-    "default": ["weekdays"],
-    "saturday": ["weekends"],
-    "sunday": ["weekends"]
-  },
-  "operational_settings": {
-    "live_mode": true,
-    "workout_name_prefix": "",
-    "timezone": "America/Los_Angeles"
-  }
 }
