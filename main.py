@@ -64,6 +64,17 @@ def calculate_next_day_tss(current_ctl, current_atl, goals_config):
     # Get the configured time constants.
     c = goals_config.get('ctl_days', 42)
     a = goals_config.get('atl_days', 7)
+
+    if 'target_ramp_rate' in goals_config:
+        target_ramp_rate = goals_config['target_ramp_rate']
+        tss_for_ramp_goal = current_ctl + (target_ramp_rate / 7.0) * c
+        final_tss = max(0, tss_for_ramp_goal)
+        return {
+            "final_tss": final_tss,
+            "tss_for_ramp_goal": tss_for_ramp_goal,
+            "reason": "Ramp Rate Driven"
+        }
+
     target_tsb = goals_config.get('target_tsb', 0)
 
     # --- NEW: Generalized formula for any time constants ---
@@ -79,7 +90,7 @@ def calculate_next_day_tss(current_ctl, current_atl, goals_config):
     tss_for_tsb_goal = numerator / denominator if denominator != 0 else 0
     # --- END OF CORRECTION ---
 
-    tss_cap_from_alb = current_atl - goals_config['alb_lower_bound']
+    tss_cap_from_alb = current_atl - goals_config.get('alb_lower_bound', -200)
 
     reason = "TSB Driven"
     final_tss = tss_for_tsb_goal
@@ -211,21 +222,33 @@ def build_workout_from_template(target_tss, template, workout_date, tss_details,
         <td>{days_to_target} days away</td>
     </tr>"""
 
-    rationale_string = f"""
-<h3>Auto-Plan Rationale</h3>
-<table>
-    <style>
-        td:first-child {{
-            padding-right: 5px; text-align: right;
-        }}
-    </style>{split_info_html}
+    if 'target_ramp_rate' in goals_config:
+        limits_html = f"""
+    <tr>
+        <td>Target Ramp Rate: </td>
+        <td>{goals_config['target_ramp_rate']:.1f} / wk</td>
+    </tr>
+    <tr>
+        <td>CTL: </td>
+        <td>{current_ctl:.1f}</td>
+    </tr>
+    <tr>
+        <td>ATL: </td>
+        <td>{current_atl:.1f}</td>
+    </tr>
+    <tr>
+        <td>Target TSS from Ramp Rate: </td>
+        <td>{tss_details.get('tss_for_ramp_goal', 0):.1f}</td>
+    </tr>"""
+    else:
+        limits_html = f"""
     <tr>
         <td>TSB Limit: </td>
-        <td>{goals_config['target_tsb']:.1f}</td>
+        <td>{goals_config.get('target_tsb', 0):.1f}</td>
     </tr>
     <tr>
         <td>ALB Limit: </td>
-        <td>{goals_config['alb_lower_bound']:.1f}</td>
+        <td>{goals_config.get('alb_lower_bound', 0):.1f}</td>
     </tr>
     <tr>
         <td>CTL: </td>
@@ -237,12 +260,21 @@ def build_workout_from_template(target_tss, template, workout_date, tss_details,
     </tr>
     <tr>
         <td>TSS limit from TSB: </td>
-        <td>{tss_details['tss_for_tsb_goal']:.1f}</td>
+        <td>{tss_details.get('tss_for_tsb_goal', 0):.1f}</td>
     </tr>
     <tr>
         <td>TSS limit from ALB: </td>
-        <td>{tss_details['tss_cap_from_alb']:.1f}</td>
-    </tr>
+        <td>{tss_details.get('tss_cap_from_alb', 0):.1f}</td>
+    </tr>"""
+
+    rationale_string = f"""
+<h3>Auto-Plan Rationale</h3>
+<table>
+    <style>
+        td:first-child {{
+            padding-right: 5px; text-align: right;
+        }}
+    </style>{split_info_html}{limits_html}
     <tr>
         <td>Final TSS target: </td>
         <td>{tss_details['final_tss']:.1f} ({tss_details['reason']})</td>

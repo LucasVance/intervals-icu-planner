@@ -3,8 +3,7 @@
         "ctl_days": 42,
         "atl_days": 7,
         "target_ctl": 180.0,
-        "target_tsb": -20.0,
-        "alb_lower_bound": -40.0
+        "target_ramp_rate": 4.0
     },
     "workout_templates": {
         "weekdays": {
@@ -21,12 +20,18 @@
         }
     },
     "weekly_schedule": {
-        "default": ["weekends"],
-        "saturday": ["weekends"],
-        "sunday": ["weekends"]
+        "default": [
+            "weekends"
+        ],
+        "saturday": [
+            "weekends"
+        ],
+        "sunday": [
+            "weekends"
+        ]
     },
     "operational_settings": {
-        "live_mode": false,
+        "live_mode": true,
         "workout_name_prefix": "",
         "timezone": "America/Los_Angeles"
     }
