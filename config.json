@@ -2,21 +2,21 @@
     "training_goals": {
         "ctl_days": 42,
         "atl_days": 7,
-        "target_ctl": 180.0,
-        "target_ramp_rate": 4.0
+        "target_ctl": 2700.0,
+        "target_ramp_rate": 40.0
     },
     "workout_templates": {
         "weekdays": {
             "name": "Endurance",
-            "description": "- 1m ramp 40%-63%\n- 2h59m 63%"
+            "description": "- 1m ramp 150w-200w\n- 2h59m 200w"
         },
         "weekends": {
             "name": "Endurance",
-            "description": "- 1m ramp 40%-63%\n- {{ DURATION }} 63%"
+            "description": "- 1m ramp 150w-200w\n- {{ DURATION }} 200w"
         },
         "morning": {
             "name": "Morning",
-            "description": "- 1m ramp 40%-60%\n- 59m 60%"
+            "description": "- 1m ramp 150w-180w\n- 59m 180w"
         }
     },
     "weekly_schedule": {
@@ -31,6 +31,7 @@
         ]
     },
     "operational_settings": {
+        "calculation_mode": "kJ",
         "live_mode": true,
         "workout_name_prefix": "",
         "timezone": "America/Los_Angeles"
