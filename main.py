@@ -39,8 +39,23 @@ class IntervalsAPI:
             response.raise_for_status()
             activities = response.json()
             
-            daily_kj = {}
+            # Deduplicate activities starting within the same minute (e.g., duplicate Garmin/Strava syncs)
+            deduped = {}
             for act in activities:
+                if 'start_date_local' in act:
+                    minute_key = act['start_date_local'][:16] # YYYY-MM-DDTHH:MM
+                    existing = deduped.get(minute_key)
+                    if not existing:
+                        deduped[minute_key] = act
+                    else:
+                        # Prefer the activity with actual work/load data
+                        existing_score = (existing.get('icu_joules') or 0) + (existing.get('icu_training_load') or 0)
+                        new_score = (act.get('icu_joules') or 0) + (act.get('icu_training_load') or 0)
+                        if new_score > existing_score:
+                            deduped[minute_key] = act
+
+            daily_kj = {}
+            for act in deduped.values():
                 if 'start_date_local' in act:
                     d_str = act['start_date_local'][:10]
                     joules = act.get('icu_joules') or 0
