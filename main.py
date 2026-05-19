@@ -126,48 +126,49 @@ def calculate_next_day_tss(current_ctl, current_atl, goals_config):
     c = goals_config.get('ctl_days', 42)
     a = goals_config.get('atl_days', 7)
 
-    # Solving for TSS needed to hit target ramp rate or TSB
-    # Formulas derived from CTL_next = CTL_curr * kc + TSS * (1 - kc)
+    # Decay constants
     kc = math.exp(-1.0 / c)
     ka = math.exp(-1.0 / a)
 
+    # Determine targets with auto-calibration
     if 'target_ramp_rate' in goals_config:
-        target_ramp_rate = goals_config['target_ramp_rate']
-        daily_ramp = target_ramp_rate / 7.0
-        # TSS needed for CTL_next = current_ctl + daily_ramp
-        tss_for_ramp_goal = current_ctl + (daily_ramp / (1 - kc))
-        final_tss = max(0, tss_for_ramp_goal)
-        return {
-            "final_tss": final_tss,
-            "tss_for_ramp_goal": tss_for_ramp_goal,
-            "reason": "Ramp Rate Driven"
-        }
+        target_ramp_rate = float(goals_config['target_ramp_rate'])
+        # Convert Ramp Rate to equivalent TSB target using continuous formula
+        # target_tsb = target_ramp_rate * (ka - kc) / (7.0 * (1 - ka) * (1 - kc))
+        target_tsb = target_ramp_rate * (ka - kc) / (7.0 * (1.0 - ka) * (1.0 - kc))
+    elif 'target_tsb' in goals_config:
+        target_tsb = float(goals_config['target_tsb'])
+        # Convert TSB to equivalent Ramp Rate target using continuous formula
+        # target_ramp_rate = target_tsb * 7.0 * (1 - ka) * (1 - kc) / (ka - kc)
+        target_ramp_rate = target_tsb * 7.0 * (1.0 - ka) * (1.0 - kc) / (ka - kc)
+    else:
+        # Default fallback (e.g. Ramp Rate of 40.0 / wk)
+        target_ramp_rate = 40.0
+        target_tsb = target_ramp_rate * (ka - kc) / (7.0 * (1.0 - ka) * (1.0 - kc))
 
-    target_tsb = goals_config.get('target_tsb', 0)
-    
+    # 1. Ramp Rate Bound (Prevents CTL Spikes)
+    daily_ramp = target_ramp_rate / 7.0
+    tss_for_ramp_goal = current_ctl + (daily_ramp / (1.0 - kc))
+
+    # 2. TSB Bound (Gauges Freshness)
     numerator = target_tsb - (current_ctl * kc) + (current_atl * ka)
     denominator = ka - kc
-    
-    # Avoid division by zero if c == a
     tss_for_tsb_goal = numerator / denominator if denominator != 0 else 0
-    # --- END OF CORRECTION ---
 
-    tss_cap_from_alb = current_atl - goals_config.get('alb_lower_bound', -200)
+    # 3. Apply Dual Bounds
+    final_tss = min(tss_for_ramp_goal, tss_for_tsb_goal)
+    final_tss = max(0.0, final_tss)
 
-    reason = "TSB Driven"
-    final_tss = tss_for_tsb_goal
-
-    if final_tss > tss_cap_from_alb:
-        final_tss = tss_cap_from_alb
-        reason = "ALB Driven"
-
-    final_tss = max(0, final_tss)
+    # Determine active driver
+    reason = "Ramp Rate Driven" if tss_for_ramp_goal <= tss_for_tsb_goal else "TSB Driven"
 
     return {
         "final_tss": final_tss,
+        "tss_for_ramp_goal": tss_for_ramp_goal,
         "tss_for_tsb_goal": tss_for_tsb_goal,
-        "tss_cap_from_alb": tss_cap_from_alb,
-        "reason": reason
+        "reason": reason,
+        "target_ramp_rate": target_ramp_rate,
+        "target_tsb": target_tsb
     }
 
 # ==============================================================================
@@ -308,11 +309,14 @@ def build_workout_from_template(target_load, template, workout_date, tss_details
         <td>{days_to_target} days away</td>
     </tr>"""
 
-    if 'target_ramp_rate' in goals_config:
-        limits_html = f"""
+    limits_html = f"""
     <tr>
         <td>Target Ramp Rate: </td>
-        <td>{goals_config['target_ramp_rate']:.1f} / wk</td>
+        <td>{tss_details['target_ramp_rate']:.1f} / wk</td>
+    </tr>
+    <tr>
+        <td>Target TSB: </td>
+        <td>{tss_details['target_tsb']:.1f}</td>
     </tr>
     <tr>
         <td>CTL: </td>
@@ -323,34 +327,12 @@ def build_workout_from_template(target_load, template, workout_date, tss_details
         <td>{current_atl:.1f}</td>
     </tr>
     <tr>
-        <td>Target Load from Ramp Rate: </td>
-        <td>{tss_details.get('tss_for_ramp_goal', 0):.1f}</td>
-    </tr>"""
-    else:
-        limits_html = f"""
-    <tr>
-        <td>TSB Limit: </td>
-        <td>{goals_config.get('target_tsb', 0):.1f}</td>
-    </tr>
-    <tr>
-        <td>ALB Limit: </td>
-        <td>{goals_config.get('alb_lower_bound', 0):.1f}</td>
-    </tr>
-    <tr>
-        <td>CTL: </td>
-        <td>{current_ctl:.1f}</td>
-    </tr>
-    <tr>
-        <td>ATL: </td>
-        <td>{current_atl:.1f}</td>
+        <td>Load limit from Ramp Rate: </td>
+        <td>{tss_details['tss_for_ramp_goal']:.1f}</td>
     </tr>
     <tr>
         <td>Load limit from TSB: </td>
-        <td>{tss_details.get('tss_for_tsb_goal', 0):.1f}</td>
-    </tr>
-    <tr>
-        <td>Load limit from ALB: </td>
-        <td>{tss_details.get('tss_cap_from_alb', 0):.1f}</td>
+        <td>{tss_details['tss_for_tsb_goal']:.1f}</td>
     </tr>"""
 
     rationale_string = f"""
