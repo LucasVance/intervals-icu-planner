@@ -71,7 +71,7 @@ class IntervalsAPI:
             ka = math.exp(-1.0 / a)
             
             strava_warning = False
-            for i in range(365, 0, -1):
+            for i in range(365, -1, -1):
                 d = for_date - timedelta(days=i)
                 d_str = d.isoformat()
                 kj = daily_kj.get(d_str, 0.0)
