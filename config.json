@@ -3,7 +3,7 @@
         "ctl_days": 42,
         "atl_days": 7,
         "target_ctl": 2700,
-        "target_ramp_rate": 40
+        "target_ramp_rate": 70
     },
     "workout_templates": {
         "endurance": {
